@@ -1,0 +1,35 @@
+{
+  "name": "ChatMessage",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Reference to NegotiationSession"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "user",
+        "assistant"
+      ],
+      "default": "user"
+    },
+    "content": {
+      "type": "string",
+      "description": "Message text content"
+    },
+    "input_method": {
+      "type": "string",
+      "enum": [
+        "voice",
+        "text"
+      ],
+      "default": "text"
+    }
+  },
+  "required": [
+    "session_id",
+    "role",
+    "content"
+  ]
+}

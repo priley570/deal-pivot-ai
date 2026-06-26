@@ -1,0 +1,97 @@
+{
+  "name": "NegotiationSession",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Session title, e.g. '2024 Honda CR-V at AutoNation'"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "completed",
+        "abandoned"
+      ],
+      "default": "active"
+    },
+    "vin": {
+      "type": "string",
+      "description": "Vehicle Identification Number"
+    },
+    "vehicle_year": {
+      "type": "string"
+    },
+    "vehicle_make": {
+      "type": "string"
+    },
+    "vehicle_model": {
+      "type": "string"
+    },
+    "vehicle_trim": {
+      "type": "string"
+    },
+    "vehicle_engine": {
+      "type": "string"
+    },
+    "vehicle_drivetrain": {
+      "type": "string"
+    },
+    "dealer_name": {
+      "type": "string"
+    },
+    "dealer_asking_price": {
+      "type": "number"
+    },
+    "dealer_apr": {
+      "type": "number"
+    },
+    "dealer_loan_term": {
+      "type": "number"
+    },
+    "dealer_monthly_payment": {
+      "type": "number"
+    },
+    "extracted_msrp": {
+      "type": "number"
+    },
+    "extracted_addons": {
+      "type": "number"
+    },
+    "extracted_fees": {
+      "type": "number"
+    },
+    "market_avg_price": {
+      "type": "number"
+    },
+    "market_low_price": {
+      "type": "number"
+    },
+    "market_high_price": {
+      "type": "number"
+    },
+    "fair_target_price": {
+      "type": "number"
+    },
+    "document_urls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Uploaded window sticker / contract photos"
+    },
+    "document_context": {
+      "type": "string",
+      "description": "AI-extracted text context from uploaded documents"
+    },
+    "amount_saved": {
+      "type": "number"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "title"
+  ]
+}

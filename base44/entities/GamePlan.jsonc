@@ -1,0 +1,110 @@
+{
+  "name": "GamePlan",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "planning",
+        "shopping",
+        "negotiating",
+        "complete"
+      ],
+      "default": "planning"
+    },
+    "condition": {
+      "type": "string",
+      "enum": [
+        "new",
+        "used",
+        "either"
+      ]
+    },
+    "budget_min": {
+      "type": "number"
+    },
+    "budget_max": {
+      "type": "number"
+    },
+    "market_price_min": {
+      "type": "number"
+    },
+    "market_price_max": {
+      "type": "number"
+    },
+    "budget_mismatch": {
+      "type": "boolean"
+    },
+    "preferred_makes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "preferred_models": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "open_to_alternatives": {
+      "type": "boolean",
+      "default": true
+    },
+    "body_style": {
+      "type": "string"
+    },
+    "must_have_features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "zip_code": {
+      "type": "string"
+    },
+    "down_payment": {
+      "type": "number"
+    },
+    "trade_in_value": {
+      "type": "number"
+    },
+    "credit_score_range": {
+      "type": "string",
+      "enum": [
+        "excellent_750_plus",
+        "good_700_749",
+        "fair_650_699",
+        "building_below_650"
+      ]
+    },
+    "loan_term_months": {
+      "type": "number"
+    },
+    "ai_recommendations": {
+      "type": "string"
+    },
+    "estimated_apr": {
+      "type": "number"
+    },
+    "estimated_monthly_payment": {
+      "type": "number"
+    },
+    "estimated_loan_amount": {
+      "type": "number"
+    },
+    "nearby_dealers": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "chat_history": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  },
+  "required": []
+}

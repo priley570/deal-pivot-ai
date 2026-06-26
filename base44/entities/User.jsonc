@@ -1,0 +1,36 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "user"
+      ],
+      "default": "user"
+    },
+    "subscription_tier": {
+      "type": "string",
+      "enum": [
+        "free",
+        "launchpad",
+        "showroom_pro",
+        "enterprise"
+      ],
+      "default": "free"
+    },
+    "zip_code": {
+      "type": "string"
+    },
+    "credit_score_range": {
+      "type": "string",
+      "enum": [
+        "excellent_750_plus",
+        "good_700_749",
+        "fair_650_699",
+        "building_below_650"
+      ]
+    }
+  }
+}
