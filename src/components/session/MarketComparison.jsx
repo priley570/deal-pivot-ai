@@ -15,7 +15,7 @@ export default function MarketComparison({ session, onUpdate }) {
       body: params
     });
     if (error) throw error;
-    return data.content;
+    return typeof data === 'string' ? data : data?.content ?? data;
   };
 
   const fetchMarket = async () => {

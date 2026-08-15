@@ -46,7 +46,7 @@ export default function DocumentScanner({ onDocumentProcessed, disabled }) {
       body: params
     });
     if (error) throw error;
-    return data.content;
+    return typeof data === 'string' ? data : data?.content ?? data;
   };
 
   const handleFile = async (e, type) => {

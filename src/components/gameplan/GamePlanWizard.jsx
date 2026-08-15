@@ -49,7 +49,7 @@ export default function GamePlanWizard({ plan, onClose }) {
       body: params
     });
     if (error) throw error;
-    return data.content;
+    return typeof data === 'string' ? data : data?.content ?? data;
   };
 
   useEffect(() => {
