@@ -6,9 +6,22 @@ import { Button } from '@/components/ui/button';
 import { TrendingDown, TrendingUp, Minus, RefreshCw, Loader2, BarChart2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// Strip markdown code fences and extract JSON
+const extractJSON = (str) => {
+  if (typeof str !== 'string') return str;
+  // Remove ```json ... ``` or ``` ... ``` wrappers
+  const fenced = str.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) return fenced[1].trim();
+  // Try to find a JSON object directly
+  const objMatch = str.match(/\{[\s\S]*\}/);
+  if (objMatch) return objMatch[0];
+  return str.trim();
+};
+
 export default function MarketComparison({ session, onUpdate }) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState(null);
 
   const invokeLLM = async (params) => {
     const { data, error } = await supabase.functions.invoke('invoke-llm', {
@@ -21,6 +34,7 @@ export default function MarketComparison({ session, onUpdate }) {
   const fetchMarket = async () => {
     if (!session.vehicle_make || !session.vehicle_model || !user) return;
     setLoading(true);
+    setFetchError(null);
     try {
       const result = await invokeLLM({
         prompt: `You are a car pricing expert. Provide realistic current market pricing data for a ${session.vehicle_year || ''} ${session.vehicle_make} ${session.vehicle_model} ${session.vehicle_trim || ''}.
@@ -49,9 +63,14 @@ export default function MarketComparison({ session, onUpdate }) {
 
       let data;
       try {
-        data = typeof result === 'string' ? JSON.parse(result) : result;
-      } catch {
-        data = result;
+        const cleaned = extractJSON(result);
+        data = typeof cleaned === 'string' ? JSON.parse(cleaned) : cleaned;
+      } catch (parseErr) {
+        console.error('JSON parse error:', parseErr, 'Raw result:', result);
+        throw new Error('Could not parse pricing data from AI response');
+      }
+      if (!data || typeof data.market_avg_price === 'undefined') {
+        throw new Error('Incomplete pricing data returned');
       }
 
       await supabase
@@ -67,6 +86,7 @@ export default function MarketComparison({ session, onUpdate }) {
       onUpdate({ ...data });
     } catch (err) {
       console.error('Market fetch error:', err);
+      setFetchError(err.message || 'Failed to fetch market data');
     }
     setLoading(false);
   };
@@ -106,6 +126,9 @@ export default function MarketComparison({ session, onUpdate }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {fetchError && (
+          <p className="text-xs text-destructive">{fetchError}</p>
+        )}
         {!hasData ? (
           <p className="text-xs text-muted-foreground">
             {!session.vehicle_make || !session.vehicle_model
