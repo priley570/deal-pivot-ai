@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Car, TrendingDown, ChevronRight, Clock, Search } from 'lucide-react';
@@ -8,16 +9,29 @@ import { formatDistanceToNow, format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 
 export default function History() {
+  const { user } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    base44.entities.NegotiationSession.list('-created_date', 50).then(data => {
-      setSessions(data);
+    const load = async () => {
+      if (!user) return;
+      
+      const { data, error } = await supabase
+        .from('negotiation_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      
+      if (!error) {
+        setSessions(data || []);
+      }
       setLoading(false);
-    });
-  }, []);
+    };
+    load();
+  }, [user]);
 
   const filtered = sessions.filter(s =>
     s.title?.toLowerCase().includes(search.toLowerCase()) ||
@@ -96,7 +110,7 @@ export default function History() {
                       </div>
                     )}
                     <span className="text-[10px] text-muted-foreground">
-                      {session.created_date ? format(new Date(session.created_date), 'MMM d, yyyy') : ''}
+                      {session.created_at ? format(new Date(session.created_at), 'MMM d, yyyy') : ''}
                     </span>
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   </div>

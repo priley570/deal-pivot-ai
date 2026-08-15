@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, Send, BarChart2, Loader2, ChevronDown } from 'lucide-react';
@@ -29,6 +30,7 @@ COMMUNICATION STYLE:
 export default function SessionDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [session, setSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [textInput, setTextInput] = useState('');
@@ -37,30 +39,65 @@ export default function SessionDetail() {
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
 
+  const invokeLLM = async (params) => {
+    const { data, error } = await supabase.functions.invoke('invoke-llm', {
+      body: params
+    });
+    if (error) throw error;
+    return data.content;
+  };
+
   useEffect(() => {
     const load = async () => {
-      const [s, msgs] = await Promise.all([
-        base44.entities.NegotiationSession.filter({ id }),
-        base44.entities.ChatMessage.filter({ session_id: id }, 'created_date', 50)
+      if (!user || !id) return;
+      
+      const [sessionRes, messagesRes] = await Promise.all([
+        supabase
+          .from('negotiation_sessions')
+          .select('*')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .single(),
+        supabase
+          .from('chat_messages')
+          .select('*')
+          .eq('session_id', id)
+          .order('created_at', { ascending: true })
+          .limit(50)
       ]);
-      setSession(s[0] || null);
-      setMessages(msgs);
+
+      if (sessionRes.data) {
+        setSession(sessionRes.data);
+      }
+      if (messagesRes.data) {
+        setMessages(messagesRes.data);
+      }
     };
     load();
-  }, [id]);
+  }, [id, user]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const sendMessage = async (content, inputMethod = 'text') => {
-    if (!content.trim()) return;
+    if (!content.trim() || !user) return;
     setAiLoading(true);
 
-    const userMsg = await base44.entities.ChatMessage.create({
-      session_id: id, role: 'user', content, input_method: inputMethod
-    });
-    setMessages(prev => [...prev, { ...userMsg, created_date: new Date().toISOString() }]);
+    // Save user message
+    const { data: userMsg } = await supabase
+      .from('chat_messages')
+      .insert({
+        session_id: id,
+        user_id: user.id,
+        role: 'user',
+        content,
+        input_method: inputMethod
+      })
+      .select()
+      .single();
+
+    setMessages(prev => [...prev, { ...userMsg, created_at: new Date().toISOString() }]);
     setTextInput('');
 
     // Build context for AI
@@ -74,8 +111,9 @@ export default function SessionDetail() {
 
     const contextBlock = [vehicleInfo, marketInfo, dealerInfo].filter(Boolean).join(' | ');
 
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: `${SYSTEM_PROMPT}
+    try {
+      const result = await invokeLLM({
+        prompt: `${SYSTEM_PROMPT}
 
 ${contextBlock ? `SESSION CONTEXT: ${contextBlock}` : ''}${docContext}
 
@@ -83,13 +121,25 @@ ${history ? `RECENT CONVERSATION:\n${history}\n` : ''}
 BUYER SAYS: ${content}
 
 Respond as DealPivot AI:`,
-    });
+        model: 'claude-haiku-4-5',
+      });
 
-    const aiContent = typeof result === 'string' ? result : result.content || JSON.stringify(result);
-    const aiMsg = await base44.entities.ChatMessage.create({
-      session_id: id, role: 'assistant', content: aiContent
-    });
-    setMessages(prev => [...prev, { ...aiMsg, created_date: new Date().toISOString() }]);
+      const aiContent = result;
+      const { data: aiMsg } = await supabase
+        .from('chat_messages')
+        .insert({
+          session_id: id,
+          user_id: user.id,
+          role: 'assistant',
+          content: aiContent
+        })
+        .select()
+        .single();
+      
+      setMessages(prev => [...prev, { ...aiMsg, created_at: new Date().toISOString() }]);
+    } catch (err) {
+      console.error('AI error:', err);
+    }
     setAiLoading(false);
   };
 
@@ -100,17 +150,21 @@ Respond as DealPivot AI:`,
       : contextStr;
 
     const existingUrls = session?.document_urls || [];
-    await base44.entities.NegotiationSession.update(id, {
-      document_context: updatedContext,
-      document_urls: [...existingUrls, fileUrl]
-    });
+    await supabase
+      .from('negotiation_sessions')
+      .update({
+        document_context: updatedContext,
+        document_urls: [...existingUrls, fileUrl]
+      })
+      .eq('id', id);
+    
     setSession(prev => ({ ...prev, document_context: updatedContext, document_urls: [...existingUrls, fileUrl] }));
 
     const msg = type === 'paperwork'
       ? `💰 Sales paperwork analyzed! I've identified all fees, add-ons, and potential savings opportunities above. Ask me "what should I negotiate?" or "how much can I save?" for a specific action plan.`
       : `📄 Document scanned and analyzed. I've extracted the key data. Ask me anything about it — APR analysis, hidden fees, whether to accept this offer, or what to counter with.`;
 
-    const aiMsg = { role: 'assistant', content: msg, created_date: new Date().toISOString(), id: 'doc-' + Date.now() };
+    const aiMsg = { role: 'assistant', content: msg, created_at: new Date().toISOString(), id: 'doc-' + Date.now() };
     setMessages(prev => [...prev, aiMsg]);
   };
 
@@ -168,7 +222,7 @@ Respond as DealPivot AI:`,
         {messages.length === 0 && (
           <div className="text-center py-8">
             <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center mx-auto mb-3 overflow-hidden">
-              <img src="https://media.base44.com/images/public/6a22fa41589c7b7f0c3fc365/7d82fc5d0_favicon_32.png" alt="DealPivot" className="w-8 h-8 object-contain" />
+              <span className="text-white font-bold">DP</span>
             </div>
             <p className="text-sm font-semibold text-foreground mb-1">DealPivot AI is ready</p>
             <p className="text-xs text-muted-foreground max-w-xs mx-auto">Scan a document or start talking. Ask about any offer, APR, fees, or negotiation strategy.</p>

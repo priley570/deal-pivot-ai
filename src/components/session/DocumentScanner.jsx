@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
 import { Camera, FileText, Loader2, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -18,25 +19,54 @@ Be specific with dollar amounts. Format clearly with headers.`
 };
 
 export default function DocumentScanner({ onDocumentProcessed, disabled }) {
+  const { user } = useAuth();
   const stickerRef = useRef(null);
   const paperworkRef = useRef(null);
   const [uploading, setUploading] = useState(null); // 'sticker' | 'paperwork' | null
   const [scanned, setScanned] = useState([]);
 
+  const uploadFile = async (file) => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    const { data, error } = await supabase.storage
+      .from('documents')
+      .upload(fileName, file);
+    
+    if (error) throw error;
+    
+    const { data: urlData } = supabase.storage
+      .from('documents')
+      .getPublicUrl(fileName);
+    
+    return { file_url: urlData.publicUrl };
+  };
+
+  const invokeLLM = async (params) => {
+    const { data, error } = await supabase.functions.invoke('invoke-llm', {
+      body: params
+    });
+    if (error) throw error;
+    return data.content;
+  };
+
   const handleFile = async (e, type) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !user) return;
     setUploading(type);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
+    try {
+      const { file_url } = await uploadFile(file);
+      
+      const result = await invokeLLM({
+        prompt: PROMPTS[type],
+        file_urls: [file_url],
+        model: 'claude-haiku-4-5',
+      });
 
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: PROMPTS[type],
-      file_urls: [file_url],
-      model: 'claude_sonnet_4_6'
-    });
-
-    setScanned(prev => [...prev, { type, url: file_url }]);
-    onDocumentProcessed(file_url, result.content || result, type);
+      setScanned(prev => [...prev, { type, url: file_url }]);
+      onDocumentProcessed(file_url, result, type);
+    } catch (err) {
+      console.error('Document scan error:', err);
+    }
     setUploading(null);
     e.target.value = '';
   };
@@ -49,43 +79,37 @@ export default function DocumentScanner({ onDocumentProcessed, disabled }) {
       <div className="flex gap-2">
         <Button
           variant="outline"
+          size="sm"
           onClick={() => stickerRef.current?.click()}
-          disabled={disabled || !!uploading}
-          className="h-11 gap-2 text-xs font-medium rounded-xl border-dashed flex-1"
+          disabled={!!uploading || disabled}
+          className="h-11 gap-1.5 text-xs rounded-xl flex-1"
         >
           {uploading === 'sticker' ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Scanning...</>
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : scanned.find(s => s.type === 'sticker') ? (
+            <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
           ) : (
-            <><Camera className="w-4 h-4" /> Scan Sticker</>
+            <FileText className="w-3.5 h-3.5" />
           )}
+          Sticker
         </Button>
-
         <Button
           variant="outline"
+          size="sm"
           onClick={() => paperworkRef.current?.click()}
-          disabled={disabled || !!uploading}
-          className="h-11 gap-2 text-xs font-medium rounded-xl border-dashed flex-1 border-amber-300 text-amber-700 hover:bg-amber-50"
+          disabled={!!uploading || disabled}
+          className="h-11 gap-1.5 text-xs rounded-xl flex-1"
         >
           {uploading === 'paperwork' ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing...</>
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : scanned.find(s => s.type === 'paperwork') ? (
+            <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
           ) : (
-            <><FileText className="w-4 h-4" /> Scan Paperwork</>
+            <Camera className="w-3.5 h-3.5" />
           )}
+          F&I
         </Button>
       </div>
-
-      {scanned.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {scanned.map((s, i) => (
-            <div key={i} className={`flex items-center gap-1 rounded-full px-2.5 py-1 border ${s.type === 'paperwork' ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
-              <CheckCircle className={`w-3 h-3 ${s.type === 'paperwork' ? 'text-amber-600' : 'text-emerald-600'}`} />
-              <span className={`text-xs font-medium ${s.type === 'paperwork' ? 'text-amber-700' : 'text-emerald-700'}`}>
-                {s.type === 'paperwork' ? 'Paperwork' : 'Sticker'} {i + 1}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

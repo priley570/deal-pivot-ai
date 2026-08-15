@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, Send, Bot, User } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,7 @@ When you output the JSON, include a market_price_min and market_price_max field 
 After gathering enough info, produce a structured JSON summary. Be conversational and brief. Ask one or two questions at a time. When you have enough info to proceed, say "I have everything I need to build your game plan!" and then output a JSON block wrapped in <PLAN_DATA>...</PLAN_DATA> tags with these fields: condition, budget_min, budget_max, market_price_min, market_price_max, preferred_makes (array), preferred_models (array), open_to_alternatives, body_style, must_have_features (array), zip_code, down_payment, trade_in_value, credit_score_range (one of: excellent_750_plus, good_700_749, fair_650_699, building_below_650), loan_term_months, budget_mismatch (boolean, true if market price exceeds budget by more than 20%), ai_recommendations (a 2-3 sentence plain-English summary of the market situation, any budget concerns, and negotiation tips for this specific vehicle).`;
 
 export default function GamePlanWizard({ plan, onClose }) {
+  const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,9 +44,16 @@ export default function GamePlanWizard({ plan, onClose }) {
   const [view, setView] = useState(plan ? 'summary' : 'chat'); // 'chat' | 'summary' | 'dealers'
   const bottomRef = useRef(null);
 
+  const invokeLLM = async (params) => {
+    const { data, error } = await supabase.functions.invoke('invoke-llm', {
+      body: params
+    });
+    if (error) throw error;
+    return data.content;
+  };
+
   useEffect(() => {
     if (view === 'chat' && messages.length === 0 && !plan) {
-      // Kick off with an AI greeting
       startConversation();
     }
     if (plan) {
@@ -58,64 +67,84 @@ export default function GamePlanWizard({ plan, onClose }) {
 
   const startConversation = async () => {
     setLoading(true);
-    const greeting = await base44.integrations.Core.InvokeLLM({
-      prompt: `${SYSTEM_PROMPT}\n\nStart the conversation with a warm, one-sentence greeting and your first question to the buyer.`,
-      model: 'gemini_3_flash',
-      add_context_from_internet: true,
-    });
-    setMessages([{ role: 'assistant', content: greeting }]);
+    try {
+      const greeting = await invokeLLM({
+        prompt: `${SYSTEM_PROMPT}\n\nStart the conversation with a warm, one-sentence greeting and your first question to the buyer.`,
+        model: 'claude-haiku-4-5',
+      });
+      setMessages([{ role: 'assistant', content: greeting }]);
+    } catch (err) {
+      console.error('LLM error:', err);
+      setMessages([{ role: 'assistant', content: 'Hi! I\'m your DealPivot Game Plan assistant. Let me help you figure out the perfect car for your needs and budget. First, are you looking at new or used vehicles?' }]);
+    }
     setLoading(false);
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !user) return;
     const userMsg = { role: 'user', content: input.trim() };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput('');
     setLoading(true);
 
-    const history = newMessages.map(m => `${m.role === 'user' ? 'Buyer' : 'DealPivot'}: ${m.content}`).join('\n');
-    const reply = await base44.integrations.Core.InvokeLLM({
-      prompt: `${SYSTEM_PROMPT}\n\nConversation so far:\n${history}\n\nContinue the conversation as DealPivot. Use internet search to look up real current pricing for any specific vehicle mentioned. If you have all the info needed, output <PLAN_DATA>{...json...}</PLAN_DATA> and say you're ready.`,
-      model: 'gemini_3_flash',
-      add_context_from_internet: true,
-    });
+    try {
+      const history = newMessages.map(m => `${m.role === 'user' ? 'Buyer' : 'DealPivot'}: ${m.content}`).join('\n');
+      const reply = await invokeLLM({
+        prompt: `${SYSTEM_PROMPT}\n\nConversation so far:\n${history}\n\nContinue the conversation as DealPivot. Use internet search to look up real current pricing for any specific vehicle mentioned. If you have all the info needed, output <PLAN_DATA>{...json...}</PLAN_DATA> and say you're ready.`,
+        model: 'claude-haiku-4-5',
+      });
 
-    // Check for plan data
-    const match = reply.match(/<PLAN_DATA>([\s\S]*?)<\/PLAN_DATA>/);
-    let cleanReply = reply.replace(/<PLAN_DATA>[\s\S]*?<\/PLAN_DATA>/g, '').trim();
-    setMessages(prev => [...prev, { role: 'assistant', content: cleanReply }]);
+      // Check for plan data
+      const match = reply.match(/<PLAN_DATA>([\s\S]*?)<\/PLAN_DATA>/);
+      let cleanReply = reply.replace(/<PLAN_DATA>[\s\S]*?<\/PLAN_DATA>/g, '').trim();
+      setMessages(prev => [...prev, { role: 'assistant', content: cleanReply }]);
 
-    if (match) {
-      const planData = JSON.parse(match[1]);
-      // Use the AI-researched market price as the basis for financing, not just budget_max
-      const vehiclePrice = planData.market_price_min
-        ? Math.round((planData.market_price_min + (planData.market_price_max || planData.market_price_min)) / 2)
-        : (planData.budget_max || 30000);
-      const loanAmt = vehiclePrice - (planData.down_payment || 0) - (planData.trade_in_value || 0);
-      const aprMap = { excellent_750_plus: 5.5, good_700_749: 7.5, fair_650_699: 11, building_below_650: 16 };
-      const apr = aprMap[planData.credit_score_range] || 8;
-      const months = planData.loan_term_months || 60;
-      const r = apr / 100 / 12;
-      const monthly = loanAmt > 0 ? (loanAmt * r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1) : 0;
+      if (match) {
+        const planData = JSON.parse(match[1]);
+        // Use the AI-researched market price as the basis for financing, not just budget_max
+        const vehiclePrice = planData.market_price_min
+          ? Math.round((planData.market_price_min + (planData.market_price_max || planData.market_price_min)) / 2)
+          : (planData.budget_max || 30000);
+        const loanAmt = vehiclePrice - (planData.down_payment || 0) - (planData.trade_in_value || 0);
+        const aprMap = { excellent_750_plus: 5.5, good_700_749: 7.5, fair_650_699: 11, building_below_650: 16 };
+        const apr = aprMap[planData.credit_score_range] || 8;
+        const months = planData.loan_term_months || 60;
+        const r = apr / 100 / 12;
+        const monthly = loanAmt > 0 ? (loanAmt * r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1) : 0;
 
-      const fullPlan = {
-        ...planData,
-        estimated_apr: apr,
-        estimated_loan_amount: Math.round(Math.max(loanAmt, 0)),
-        estimated_monthly_payment: Math.round(monthly > 0 ? monthly : 0),
-        chat_history: newMessages,
-        status: 'shopping',
-      };
-      setExtractedPlan(fullPlan);
+        const fullPlan = {
+          ...planData,
+          estimated_apr: apr,
+          estimated_loan_amount: Math.round(Math.max(loanAmt, 0)),
+          estimated_monthly_payment: Math.round(monthly > 0 ? monthly : 0),
+          chat_history: newMessages,
+          status: 'shopping',
+        };
+        setExtractedPlan(fullPlan);
 
-      // Save to DB
-      const saved = savedPlan
-        ? await base44.entities.GamePlan.update(savedPlan.id, fullPlan)
-        : await base44.entities.GamePlan.create(fullPlan);
-      setSavedPlan(saved);
-      setView('summary');
+        // Save to DB
+        if (savedPlan) {
+          const { data: updated } = await supabase
+            .from('game_plans')
+            .update(fullPlan)
+            .eq('id', savedPlan.id)
+            .select()
+            .single();
+          setSavedPlan(updated);
+        } else {
+          const { data: created } = await supabase
+            .from('game_plans')
+            .insert({ ...fullPlan, user_id: user.id })
+            .select()
+            .single();
+          setSavedPlan(created);
+        }
+        setView('summary');
+      }
+    } catch (err) {
+      console.error('LLM error:', err);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'I apologize, but I encountered an error. Could you try again?' }]);
     }
 
     setLoading(false);
@@ -152,7 +181,7 @@ export default function GamePlanWizard({ plan, onClose }) {
         </button>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-black flex items-center justify-center overflow-hidden">
-            <img src="https://media.base44.com/images/public/6a22fa41589c7b7f0c3fc365/7d82fc5d0_favicon_32.png" alt="DealPivot" className="w-6 h-6 object-contain" />
+            <span className="text-white font-bold">DP</span>
           </div>
           <div>
             <h1 className="text-base font-bold text-foreground">Game Plan Assistant</h1>

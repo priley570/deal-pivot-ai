@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +12,7 @@ import { ArrowLeft, Search, Loader2, Car, FileImage, ScanLine, Target } from 'lu
 export default function SessionNew() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [vin, setVin] = useState('');
   const [dealerName, setDealerName] = useState(location.state?.dealer_name || '');
   const [askingPrice, setAskingPrice] = useState('');
@@ -25,25 +27,64 @@ export default function SessionNew() {
   const stickerCameraRef = useRef(null);
 
   useEffect(() => {
-    base44.entities.GamePlan.list('-created_date', 10).then(setGamePlans).catch(() => {});
-  }, []);
+    const loadGamePlans = async () => {
+      if (!user) return;
+      const { data } = await supabase
+        .from('game_plans')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (data) setGamePlans(data);
+    };
+    loadGamePlans();
+  }, [user]);
+
+  const uploadFile = async (file) => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    const { data, error } = await supabase.storage
+      .from('documents')
+      .upload(fileName, file);
+    
+    if (error) throw error;
+    
+    const { data: urlData } = supabase.storage
+      .from('documents')
+      .getPublicUrl(fileName);
+    
+    return { file_url: urlData.publicUrl };
+  };
+
+  const invokeLLM = async (params) => {
+    const { data, error } = await supabase.functions.invoke('invoke-llm', {
+      body: params
+    });
+    if (error) throw error;
+    return data.content;
+  };
 
   const handleVinScan = async (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !user) return;
     setScanning('vin');
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: `Look at this image of a vehicle VIN label or door jamb sticker. Extract ONLY the 17-character VIN number. Return just the VIN characters, nothing else. If you cannot find a VIN, return the word "NOT_FOUND".`,
-      file_urls: [file_url],
-      model: 'claude_sonnet_4_6',
-    });
-    const extracted = result?.trim().replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
-    if (extracted && extracted.length >= 11 && extracted !== 'NOT_FOUND') {
-      setVin(extracted);
-      setVinError('');
-      setVinData(null);
-    } else {
+    try {
+      const { file_url } = await uploadFile(file);
+      const result = await invokeLLM({
+        prompt: `Look at this image of a vehicle VIN label or door jamb sticker. Extract ONLY the 17-character VIN number. Return just the VIN characters, nothing else. If you cannot find a VIN, return the word "NOT_FOUND".`,
+        file_urls: [file_url],
+        model: 'claude-haiku-4-5',
+      });
+      const extracted = result?.trim().replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
+      if (extracted && extracted.length >= 11 && extracted !== 'NOT_FOUND') {
+        setVin(extracted);
+        setVinError('');
+        setVinData(null);
+      } else {
+        setVinError('Could not read VIN from image. Please type it manually.');
+      }
+    } catch (err) {
+      console.error('VIN scan error:', err);
       setVinError('Could not read VIN from image. Please type it manually.');
     }
     setScanning(null);
@@ -52,32 +93,43 @@ export default function SessionNew() {
 
   const handleStickerScan = async (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !user) return;
     setScanning('sticker');
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: `Analyze this car window sticker or Monroney label. Extract: VIN, year, make, model, trim level, engine description, drivetrain/drive type, and MSRP. Return as JSON.`,
-      file_urls: [file_url],
-      model: 'claude_sonnet_4_6',
-      response_json_schema: {
-        type: 'object',
-        properties: {
-          vin: { type: 'string' },
-          year: { type: 'string' },
-          make: { type: 'string' },
-          model: { type: 'string' },
-          trim: { type: 'string' },
-          engine: { type: 'string' },
-          drive: { type: 'string' },
-          msrp: { type: 'number' },
+    try {
+      const { file_url } = await uploadFile(file);
+      const result = await invokeLLM({
+        prompt: `Analyze this car window sticker or Monroney label. Extract: VIN, year, make, model, trim level, engine description, drivetrain/drive type, and MSRP. Return as JSON.`,
+        file_urls: [file_url],
+        model: 'claude-haiku-4-5',
+        response_json_schema: {
+          type: "object",
+          properties: {
+            vin: { type: "string" },
+            year: { type: "string" },
+            make: { type: "string" },
+            model: { type: "string" },
+            trim: { type: "string" },
+            engine: { type: "string" },
+            drive: { type: "string" },
+            msrp: { type: "number" },
+          }
         }
+      });
+      let parsed;
+      try {
+        parsed = typeof result === 'string' ? JSON.parse(result) : result;
+      } catch {
+        parsed = {};
       }
-    });
-    if (result?.make) {
-      setVinData({ year: result.year, make: result.make, model: result.model, trim: result.trim, engine: result.engine, drive: result.drive });
-      if (result.vin) setVin(result.vin.toUpperCase());
-      if (result.msrp) setAskingPrice(String(result.msrp));
-    } else {
+      if (parsed?.make) {
+        setVinData({ year: parsed.year, make: parsed.make, model: parsed.model, trim: parsed.trim, engine: parsed.engine, drive: parsed.drive });
+        if (parsed.vin) setVin(parsed.vin.toUpperCase());
+        if (parsed.msrp) setAskingPrice(String(parsed.msrp));
+      } else {
+        setVinError('Could not read window sticker. Try a clearer photo.');
+      }
+    } catch (err) {
+      console.error('Sticker scan error:', err);
       setVinError('Could not read window sticker. Try a clearer photo.');
     }
     setScanning(null);
@@ -105,6 +157,7 @@ export default function SessionNew() {
   };
 
   const handleCreate = async () => {
+    if (!user) return;
     setCreating(true);
     const vehicle = vinData || {};
     const title = vinData
@@ -113,22 +166,37 @@ export default function SessionNew() {
 
     const selectedPlan = gamePlans.find(p => p.id === selectedPlanId);
 
-    const session = await base44.entities.NegotiationSession.create({
+    const sessionData = {
+      user_id: user.id,
       title,
       status: 'active',
-      vin: vin || undefined,
-      vehicle_year: vehicle.year,
-      vehicle_make: vehicle.make,
-      vehicle_model: vehicle.model,
-      vehicle_trim: vehicle.trim,
-      vehicle_engine: vehicle.engine,
-      vehicle_drivetrain: vehicle.drive,
-      dealer_name: dealerName || undefined,
-      dealer_asking_price: askingPrice ? parseFloat(askingPrice) : undefined,
-      ...(selectedPlan ? {
-        notes: `Game Plan: ${selectedPlan.preferred_makes?.join(', ') || 'Any'} | Budget: $${(selectedPlan.budget_min || 0).toLocaleString()}–$${(selectedPlan.budget_max || 0).toLocaleString()} | Credit: ${selectedPlan.credit_score_range || 'unknown'} | Down: $${(selectedPlan.down_payment || 0).toLocaleString()} | Trade-in: $${(selectedPlan.trade_in_value || 0).toLocaleString()}`,
-      } : {}),
-    });
+      vin: vin || null,
+      vehicle_year: vehicle.year || null,
+      vehicle_make: vehicle.make || null,
+      vehicle_model: vehicle.model || null,
+      vehicle_trim: vehicle.trim || null,
+      vehicle_engine: vehicle.engine || null,
+      vehicle_drivetrain: vehicle.drive || null,
+      dealer_name: dealerName || null,
+      dealer_asking_price: askingPrice ? parseFloat(askingPrice) : null,
+    };
+
+    if (selectedPlan) {
+      sessionData.notes = `Game Plan: ${selectedPlan.preferred_makes?.join(', ') || 'Any'} | Budget: $${(selectedPlan.budget_min || 0).toLocaleString()}–$${(selectedPlan.budget_max || 0).toLocaleString()} | Credit: ${selectedPlan.credit_score_range || 'unknown'} | Down: $${(selectedPlan.down_payment || 0).toLocaleString()} | Trade-in: $${(selectedPlan.trade_in_value || 0).toLocaleString()}`;
+    }
+
+    const { data: session, error } = await supabase
+      .from('negotiation_sessions')
+      .insert(sessionData)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Create session error:', error);
+      setCreating(false);
+      return;
+    }
+
     navigate(`/session/${session.id}`);
   };
 

@@ -1,20 +1,28 @@
-import React, { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Lock, Loader2, AlertTriangle } from "lucide-react";
+import { Lock, Loader2, AlertTriangle, CheckCircle, ArrowLeft } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 
 export default function ResetPassword() {
-  const [searchParams] = useSearchParams();
-  const resetToken = searchParams.get("token");
-
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [hasToken, setHasToken] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Check if we have a hash with access token (Supabase sends it via URL hash)
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token')) {
+      setHasToken(true);
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,8 +33,15 @@ export default function ResetPassword() {
     }
     setLoading(true);
     try {
-      await base44.auth.resetPassword({ resetToken, newPassword });
-      window.location.href = "/login";
+      // Supabase automatically processes the hash on page load
+      // We just need to call updateUser with the new password
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+      if (error) throw error;
+      setSuccess(true);
+      // Redirect to login after short delay
+      setTimeout(() => navigate('/login'), 2000);
     } catch (err) {
       setError(err.message || "Failed to reset password");
     } finally {
@@ -34,21 +49,30 @@ export default function ResetPassword() {
     }
   };
 
-  if (!resetToken) {
+  if (success) {
+    return (
+      <AuthLayout
+        icon={CheckCircle}
+        title="Password reset"
+        subtitle="Your password has been updated"
+      >
+        <p className="text-sm text-foreground text-center">
+          Redirecting you to login...
+        </p>
+      </AuthLayout>
+    );
+  }
+
+  if (!hasToken) {
     return (
       <AuthLayout
         icon={AlertTriangle}
-        title="Invalid reset link"
-        subtitle="This password reset link is missing or invalid"
-        footer={
-          <Link to="/forgot-password" className="text-primary font-medium hover:underline">
-            Request a new link
-          </Link>
-        }
+        title="Invalid link"
+        subtitle="This password reset link is invalid or expired"
       >
-        <p className="text-sm text-foreground text-center">
-          The link you used appears to be incomplete. Please request a new password reset email.
-        </p>
+        <Link to="/forgot-password" className="text-primary font-medium hover:underline">
+          <ArrowLeft className="w-3 h-3 inline mr-1" />Request a new link
+        </Link>
       </AuthLayout>
     );
   }
@@ -57,7 +81,12 @@ export default function ResetPassword() {
     <AuthLayout
       icon={Lock}
       title="New password"
-      subtitle="Enter your new password below"
+      subtitle="Enter your new password"
+      footer={
+        <Link to="/login" className="text-primary font-medium hover:underline">
+          <ArrowLeft className="w-3 h-3 inline mr-1" />Back to log in
+        </Link>
+      }
     >
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
@@ -66,14 +95,13 @@ export default function ResetPassword() {
       )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="password">New Password</Label>
+          <Label htmlFor="newPassword">New password</Label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
             <Input
-              id="password"
+              id="newPassword"
               type="password"
               autoComplete="new-password"
-              autoFocus
               placeholder="••••••••"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
@@ -83,11 +111,11 @@ export default function ResetPassword() {
           </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="confirm">Confirm Password</Label>
+          <Label htmlFor="confirmPassword">Confirm password</Label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
             <Input
-              id="confirm"
+              id="confirmPassword"
               type="password"
               autoComplete="new-password"
               placeholder="••••••••"
@@ -102,10 +130,10 @@ export default function ResetPassword() {
           {loading ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Resetting...
+              Updating...
             </>
           ) : (
-            "Reset password"
+            "Update password"
           )}
         </Button>
       </form>

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +18,8 @@ const TIERS = {
 };
 
 export default function Profile() {
-  const [user, setUser] = useState(null);
+  const { user, logout, updateProfile } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState({ sessions: 0, saved: 0 });
   const [zipCode, setZipCode] = useState('');
   const [creditScore, setCreditScore] = useState('');
@@ -24,30 +27,44 @@ export default function Profile() {
 
   useEffect(() => {
     const load = async () => {
-      const [u, sessions] = await Promise.all([
-        base44.auth.me().catch(() => null),
-        base44.entities.NegotiationSession.list('-created_date', 100)
-      ]);
-      setUser(u);
-      setZipCode(u?.zip_code || '');
-      setCreditScore(u?.credit_score_range || '');
-      setStats({
-        sessions: sessions.length,
-        saved: sessions.reduce((acc, s) => acc + (s.amount_saved || 0), 0),
-        completed: sessions.filter(s => s.status === 'completed').length,
-      });
+      if (!user) return;
+      
+      setZipCode(user.zip_code || '');
+      setCreditScore(user.credit_score_range || '');
+      
+      // Load sessions for stats
+      const { data: sessions } = await supabase
+        .from('negotiation_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      
+      if (sessions) {
+        setStats({
+          sessions: sessions.length,
+          saved: sessions.reduce((acc, s) => acc + (s.amount_saved || 0), 0),
+          completed: sessions.filter(s => s.status === 'completed').length,
+        });
+      }
     };
     load();
-  }, []);
+  }, [user]);
 
   const tier = TIERS[user?.subscription_tier || 'free'];
   const TierIcon = tier?.icon || Zap;
 
-  const handleLogout = () => base44.auth.logout('/');
+  const handleLogout = async () => {
+    await logout(true);
+    navigate('/login');
+  };
 
   const handleSavePreferences = async () => {
     setSaving(true);
-    await base44.auth.updateMe({ zip_code: zipCode, credit_score_range: creditScore });
+    const { error } = await updateProfile({ 
+      zip_code: zipCode, 
+      credit_score_range: creditScore 
+    });
     setSaving(false);
   };
 

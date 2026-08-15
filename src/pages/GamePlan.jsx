@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Map, Plus, ChevronRight, Loader2, Target, Trash2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,6 +9,7 @@ import { formatDistanceToNow } from 'date-fns';
 import GamePlanWizard from '@/components/gameplan/GamePlanWizard';
 
 export default function GamePlan() {
+  const { user } = useAuth();
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showWizard, setShowWizard] = useState(false);
@@ -17,17 +19,23 @@ export default function GamePlan() {
   const handleDelete = async (e, planId) => {
     e.stopPropagation();
     setDeletingId(planId);
-    await base44.entities.GamePlan.delete(planId);
+    await supabase.from('game_plans').delete().eq('id', planId);
     setPlans(prev => prev.filter(p => p.id !== planId));
     setDeletingId(null);
   };
 
-  useEffect(() => { loadPlans(); }, []);
+  useEffect(() => { loadPlans(); }, [user]);
 
   const loadPlans = async () => {
+    if (!user) return;
     setLoading(true);
-    const data = await base44.entities.GamePlan.list('-created_date', 20);
-    setPlans(data);
+    const { data } = await supabase
+      .from('game_plans')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (data) setPlans(data);
     setLoading(false);
   };
 
@@ -93,7 +101,7 @@ export default function GamePlan() {
                       {plan.budget_max ? ` · Up to $${plan.budget_max.toLocaleString()}` : ''}
                     </p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
-                      {formatDistanceToNow(new Date(plan.created_date), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(plan.created_at), { addSuffix: true })}
                     </p>
                   </div>
                 </div>

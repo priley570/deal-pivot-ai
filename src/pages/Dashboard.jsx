@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-
 import { Link, useNavigate } from 'react-router-dom';
-
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,23 +9,29 @@ import { Plus, Car, TrendingDown, Clock, ChevronRight, Target } from 'lucide-rea
 import { formatDistanceToNow } from 'date-fns';
 
 export default function Dashboard() {
-  const [user, setUser] = useState(null);
+  const { user } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     const load = async () => {
-      const [u, s] = await Promise.all([
-        base44.auth.me().catch(() => null),
-        base44.entities.NegotiationSession.list('-created_date', 5)
-      ]);
-      setUser(u);
-      setSessions(s);
+      if (!user) return;
+      
+      const { data, error } = await supabase
+        .from('negotiation_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      if (!error) {
+        setSessions(data || []);
+      }
       setLoading(false);
     };
     load();
-  }, []);
+  }, [user]);
 
   const handleNewSession = () => navigate('/session/new');
 
@@ -39,7 +44,7 @@ export default function Dashboard() {
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-1">
           <div className="w-9 h-9 rounded-xl bg-black flex items-center justify-center overflow-hidden">
-            <img src="https://media.base44.com/images/public/6a22fa41589c7b7f0c3fc365/7d82fc5d0_favicon_32.png" alt="DealPivot" className="w-7 h-7 object-contain" />
+            <span className="text-white font-bold text-lg">DP</span>
           </div>
           <div>
             <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">DealPivot AI</p>
@@ -110,7 +115,7 @@ export default function Dashboard() {
                       <div>
                         <p className="text-sm font-semibold text-foreground leading-tight">{session.title}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatDistanceToNow(new Date(session.created_date), { addSuffix: true })}
+                          {formatDistanceToNow(new Date(session.created_at), { addSuffix: true })}
                         </p>
                       </div>
                     </div>
