@@ -222,7 +222,7 @@ Respond as DealPivot AI:`,
         {messages.length === 0 && (
           <div className="text-center py-8">
             <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center mx-auto mb-3 overflow-hidden">
-              <span className="text-white font-bold">DP</span>
+              <img src="/logo64.png" alt="Deal Pivot AI" className="w-8 h-8 object-contain" />
             </div>
             <p className="text-sm font-semibold text-foreground mb-1">DealPivot AI is ready</p>
             <p className="text-xs text-muted-foreground max-w-xs mx-auto">Scan a document or start talking. Ask about any offer, APR, fees, or negotiation strategy.</p>

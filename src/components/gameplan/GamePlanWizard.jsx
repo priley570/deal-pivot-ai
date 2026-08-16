@@ -181,7 +181,7 @@ export default function GamePlanWizard({ plan, onClose }) {
         </button>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-black flex items-center justify-center overflow-hidden">
-            <span className="text-white font-bold">DP</span>
+            <img src="/logo64.png" alt="Deal Pivot AI" className="w-6 h-6 object-contain" />
           </div>
           <div>
             <h1 className="text-base font-bold text-foreground">Game Plan Assistant</h1>

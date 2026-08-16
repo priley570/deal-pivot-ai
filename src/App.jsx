@@ -28,7 +28,7 @@ const AuthenticatedApp = () => {
       <div className="fixed inset-0 flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-black flex items-center justify-center overflow-hidden">
-            <span className="text-white font-bold text-lg">DP</span>
+            <img src="/logo64.png" alt="Deal Pivot AI" className="w-7 h-7 object-contain" />
           </div>
           <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
         </div>
