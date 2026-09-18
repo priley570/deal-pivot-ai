@@ -212,7 +212,7 @@ Respond as DealPivot AI:`,
         </div>
         {showMarket && (
           <div className="mt-3">
-            <MarketComparison session={session} onUpdate={handleMarketUpdate} />
+            <MarketComparison session={session} onUpdate={handleMarketUpdate} zipCode={user?.zip_code} />
           </div>
         )}
       </div>

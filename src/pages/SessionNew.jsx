@@ -171,9 +171,10 @@ export default function SessionNew() {
       title,
       status: 'active',
       vin: vin || null,
+      // Use VIN-decoded vehicle data first, fall back to game plan make/model
       vehicle_year: vehicle.year || null,
-      vehicle_make: vehicle.make || null,
-      vehicle_model: vehicle.model || null,
+      vehicle_make: vehicle.make || selectedPlan?.preferred_makes?.[0] || null,
+      vehicle_model: vehicle.model || selectedPlan?.preferred_models?.[0] || null,
       vehicle_trim: vehicle.trim || null,
       vehicle_engine: vehicle.engine || null,
       vehicle_drivetrain: vehicle.drive || null,
@@ -182,7 +183,7 @@ export default function SessionNew() {
     };
 
     if (selectedPlan) {
-      sessionData.notes = `Game Plan: ${selectedPlan.preferred_makes?.join(', ') || 'Any'} | Budget: $${(selectedPlan.budget_min || 0).toLocaleString()}–$${(selectedPlan.budget_max || 0).toLocaleString()} | Credit: ${selectedPlan.credit_score_range || 'unknown'} | Down: $${(selectedPlan.down_payment || 0).toLocaleString()} | Trade-in: $${(selectedPlan.trade_in_value || 0).toLocaleString()}`;
+      sessionData.notes = `Game Plan: ${selectedPlan.preferred_makes?.join(', ') || 'Any'} | Budget: $${(selectedPlan.budget_min || 0).toLocaleString()}–$${(selectedPlan.budget_max || 0).toLocaleString()} | Credit: ${selectedPlan.credit_score_range || 'unknown'} | Down: $${(selectedPlan.down_payment || 0).toLocaleString()} | Trade-in: $${(selectedPlan.trade_in_value || 0).toLocaleString()} | ZIP: ${selectedPlan.zip_code || user?.zip_code || 'N/A'}`;
     }
 
     const { data: session, error } = await supabase
