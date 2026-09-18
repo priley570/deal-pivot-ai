@@ -15,7 +15,7 @@ Guide the conversation through these topics (naturally, not as a rigid checklist
 3. Body style (SUV, sedan, truck, etc.)
 4. Must-have features (AWD, third row, EV, etc.)
 5. Budget range (total price they want to spend)
-6. ZIP code for finding nearby dealers (within 50 miles)
+6. ZIP code for finding nearby dealers (within 100 miles)
 7. Down payment amount
 8. Trade-in vehicle (year/make/model) and estimated value
 9. Credit score range (excellent 750+, good 700-749, fair 650-699, building below 650)
@@ -68,8 +68,16 @@ export default function GamePlanWizard({ plan, onClose }) {
   const startConversation = async () => {
     setLoading(true);
     try {
+      // Build profile context from saved preferences
+      const profileParts = [];
+      if (user?.zip_code) profileParts.push(`ZIP code: ${user.zip_code} (already on file — confirm with user rather than re-asking)`);
+      if (user?.credit_score_range) profileParts.push(`Credit score range: ${user.credit_score_range} (already on file — confirm with user rather than re-asking)`);
+      const profileContext = profileParts.length > 0
+        ? `\n\nUSER PROFILE DATA (already saved — do NOT ask for these unless the user wants to change them, just confirm briefly):\n${profileParts.join('\n')}`
+        : '';
+
       const greeting = await invokeLLM({
-        prompt: `${SYSTEM_PROMPT}\n\nStart the conversation with a warm, one-sentence greeting and your first question to the buyer.`,
+        prompt: `${SYSTEM_PROMPT}${profileContext}\n\nStart the conversation with a warm, one-sentence greeting and your first question to the buyer. If you already have their ZIP code and credit score on file, skip those questions and mention you already have them.`,
         model: 'claude-haiku-4-5',
       });
       setMessages([{ role: 'assistant', content: greeting }]);
@@ -90,8 +98,14 @@ export default function GamePlanWizard({ plan, onClose }) {
 
     try {
       const history = newMessages.map(m => `${m.role === 'user' ? 'Buyer' : 'DealPivot'}: ${m.content}`).join('\n');
+      const profileParts = [];
+      if (user?.zip_code) profileParts.push(`ZIP code: ${user.zip_code}`);
+      if (user?.credit_score_range) profileParts.push(`Credit score range: ${user.credit_score_range}`);
+      const profileContext = profileParts.length > 0
+        ? `\n\nUSER PROFILE DATA (use these values in the JSON plan unless the user has specified different values in the conversation):\n${profileParts.join('\n')}`
+        : '';
       const reply = await invokeLLM({
-        prompt: `${SYSTEM_PROMPT}\n\nConversation so far:\n${history}\n\nContinue the conversation as DealPivot. Use internet search to look up real current pricing for any specific vehicle mentioned. If you have all the info needed, output <PLAN_DATA>{...json...}</PLAN_DATA> and say you're ready.`,
+        prompt: `${SYSTEM_PROMPT}${profileContext}\n\nConversation so far:\n${history}\n\nContinue the conversation as DealPivot. Use internet search to look up real current pricing for any specific vehicle mentioned. If you have all the info needed, output <PLAN_DATA>{...json...}</PLAN_DATA> and say you're ready.`,`
         model: 'claude-haiku-4-5',
       });
 
