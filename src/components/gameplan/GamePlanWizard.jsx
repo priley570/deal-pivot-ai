@@ -127,32 +127,61 @@ export default function GamePlanWizard({ plan, onClose }) {
         const r = apr / 100 / 12;
         const monthly = loanAmt > 0 ? (loanAmt * r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1) : 0;
 
-        const fullPlan = {
-          ...planData,
+        // Only include columns that exist in the game_plans table
+        const dbPlan = {
+          condition: planData.condition || null,
+          budget_min: planData.budget_min || null,
+          budget_max: planData.budget_max || null,
+          market_price_min: planData.market_price_min || null,
+          market_price_max: planData.market_price_max || null,
+          budget_mismatch: planData.budget_mismatch || false,
+          preferred_makes: planData.preferred_makes || [],
+          preferred_models: planData.preferred_models || [],
+          open_to_alternatives: planData.open_to_alternatives ?? true,
+          body_style: planData.body_style || null,
+          must_have_features: planData.must_have_features || [],
+          zip_code: planData.zip_code || user?.zip_code || null,
+          down_payment: planData.down_payment || null,
+          trade_in_value: planData.trade_in_value || null,
+          credit_score_range: planData.credit_score_range || user?.credit_score_range || null,
+          loan_term_months: planData.loan_term_months || null,
+          ai_recommendations: planData.ai_recommendations || null,
           estimated_apr: apr,
           estimated_loan_amount: Math.round(Math.max(loanAmt, 0)),
           estimated_monthly_payment: Math.round(monthly > 0 ? monthly : 0),
           chat_history: newMessages,
           status: 'shopping',
         };
+
+        // Keep full plan in memory (including any extra AI fields for display)
+        const fullPlan = { ...planData, ...dbPlan };
         setExtractedPlan(fullPlan);
 
-        // Save to DB
+        // Save to DB — capture errors explicitly
         if (savedPlan) {
-          const { data: updated } = await supabase
+          const { data: updated, error: updateError } = await supabase
             .from('game_plans')
-            .update(fullPlan)
+            .update(dbPlan)
             .eq('id', savedPlan.id)
+            .eq('user_id', user.id)
             .select()
             .single();
-          setSavedPlan(updated);
+          if (updateError) {
+            console.error('Game plan update failed:', updateError);
+          } else {
+            setSavedPlan(updated);
+          }
         } else {
-          const { data: created } = await supabase
+          const { data: created, error: insertError } = await supabase
             .from('game_plans')
-            .insert({ ...fullPlan, user_id: user.id })
+            .insert({ ...dbPlan, user_id: user.id })
             .select()
             .single();
-          setSavedPlan(created);
+          if (insertError) {
+            console.error('Game plan insert failed:', insertError);
+          } else {
+            setSavedPlan(created);
+          }
         }
         setView('summary');
       }
