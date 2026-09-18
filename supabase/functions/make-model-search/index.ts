@@ -32,7 +32,7 @@ serve(async (req) => {
       radius: effectiveRadius.toString(),
       rows: '20',
       start: '0',
-      fields: 'id,vin,year,make,model,trim,price,miles,dealer.name,dealer.city,dealer.state,dealer.zip,dom,exterior_color'
+      fields: 'id,vin,year,make,model,trim,price,miles,dealer.name,dealer.city,dealer.state,dealer.zip,dom,exterior_color,vdp_url'
     })
 
     params.append('make', make)
@@ -60,6 +60,7 @@ serve(async (req) => {
       miles: listing.miles,
       exterior_color: listing.exterior_color,
       days_on_market: listing.dom,
+      vdp_url: listing.vdp_url || null,
       dealer: {
         name: listing.dealer?.name || 'Unknown Dealer',
         city: listing.dealer?.city || '',

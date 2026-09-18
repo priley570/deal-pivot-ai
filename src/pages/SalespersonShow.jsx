@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { TrendingDown, TrendingUp, Target, DollarSign, AlertTriangle, CheckCircle, Loader2, BarChart2, MapPin, RefreshCw } from 'lucide-react';
+import { TrendingDown, TrendingUp, Target, DollarSign, AlertTriangle, CheckCircle, Loader2, BarChart2, MapPin, RefreshCw, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function SalespersonShow() {
@@ -295,29 +295,42 @@ export default function SalespersonShow() {
                     Similar Vehicles Nearby ({listings.length})
                   </p>
                   <div className="space-y-2">
-                    {listings.slice(0, 6).map((listing, i) => (
-                      <div key={listing.id || i} className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-sm">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-semibold text-slate-800">
-                              {listing.year} {listing.make} {listing.model}
-                              {listing.trim && <span className="text-slate-500 font-normal"> {listing.trim}</span>}
-                            </p>
-                            <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                              <MapPin className="w-3 h-3" />
-                              {listing.dealer?.city}, {listing.dealer?.state}
-                            </p>
-                            {listing.days_on_market && (
-                              <p className="text-xs text-slate-400 mt-0.5">{listing.days_on_market} days on lot</p>
-                            )}
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-blue-600 text-base">${listing.price?.toLocaleString()}</p>
-                            <p className="text-xs text-slate-400">{listing.miles?.toLocaleString()} mi</p>
+                    {listings.slice(0, 6).map((listing, i) => {
+                      const card = (
+                        <div key={listing.id || i} className={cn(
+                          'bg-slate-50 rounded-xl p-3 border border-slate-100 text-sm transition-colors',
+                          listing.vdp_url ? 'cursor-pointer hover:bg-blue-50 hover:border-blue-200 active:bg-blue-100' : ''
+                        )}>
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-semibold text-slate-800 truncate">
+                                  {listing.year} {listing.make} {listing.model}
+                                  {listing.trim && <span className="text-slate-500 font-normal"> {listing.trim}</span>}
+                                </p>
+                                {listing.vdp_url && <ExternalLink className="w-3 h-3 text-blue-400 shrink-0" />}
+                              </div>
+                              <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-3 h-3" />
+                                {listing.dealer?.city}, {listing.dealer?.state}
+                              </p>
+                              {listing.days_on_market && (
+                                <p className="text-xs text-slate-400 mt-0.5">{listing.days_on_market} days on lot</p>
+                              )}
+                            </div>
+                            <div className="text-right shrink-0 ml-2">
+                              <p className="font-bold text-blue-600 text-base">${listing.price?.toLocaleString()}</p>
+                              <p className="text-xs text-slate-400">{listing.miles?.toLocaleString()} mi</p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                      return listing.vdp_url ? (
+                        <a key={listing.id || i} href={listing.vdp_url} target="_blank" rel="noopener noreferrer" className="block no-underline">
+                          {card}
+                        </a>
+                      ) : card;
+                    })}
                   </div>
                 </div>
               )}
