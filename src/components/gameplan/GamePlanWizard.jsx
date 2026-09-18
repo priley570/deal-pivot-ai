@@ -105,7 +105,7 @@ export default function GamePlanWizard({ plan, onClose }) {
         ? `\n\nUSER PROFILE DATA (use these values in the JSON plan unless the user has specified different values in the conversation):\n${profileParts.join('\n')}`
         : '';
       const reply = await invokeLLM({
-        prompt: `${SYSTEM_PROMPT}${profileContext}\n\nConversation so far:\n${history}\n\nContinue the conversation as DealPivot. Use internet search to look up real current pricing for any specific vehicle mentioned. If you have all the info needed, output <PLAN_DATA>{...json...}</PLAN_DATA> and say you're ready.`,`
+        prompt: `${SYSTEM_PROMPT}${profileContext}\n\nConversation so far:\n${history}\n\nContinue the conversation as DealPivot. Use internet search to look up real current pricing for any specific vehicle mentioned. If you have all the info needed, output <PLAN_DATA>{...json...}</PLAN_DATA> and say you're ready.`,
         model: 'claude-haiku-4-5',
       });
 
