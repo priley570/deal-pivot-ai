@@ -61,7 +61,8 @@ export default function SessionNew() {
       body: params
     });
     if (error) throw error;
-    return data.content;
+    // Edge function returns the text string directly (not wrapped in {content})
+    return data;
   };
 
   const handleVinScan = async (e) => {
@@ -73,7 +74,7 @@ export default function SessionNew() {
       const result = await invokeLLM({
         prompt: `Look at this image of a vehicle VIN label or door jamb sticker. Extract ONLY the 17-character VIN number. Return just the VIN characters, nothing else. If you cannot find a VIN, return the word "NOT_FOUND".`,
         file_urls: [file_url],
-        model: 'claude-haiku-4-5',
+        model: 'claude-sonnet-4-5',
       });
       const extracted = result?.trim().replace(/[^A-HJ-NPR-Z0-9]/gi, '').toUpperCase();
       if (extracted && extracted.length >= 11 && extracted !== 'NOT_FOUND') {
@@ -95,42 +96,53 @@ export default function SessionNew() {
     const file = e.target.files?.[0];
     if (!file || !user) return;
     setScanning('sticker');
+    setVinError('');
     try {
       const { file_url } = await uploadFile(file);
       const result = await invokeLLM({
-        prompt: `Analyze this car window sticker or Monroney label. Extract: VIN, year, make, model, trim level, engine description, drivetrain/drive type, and MSRP. Return as JSON.`,
+        prompt: `This is a car window sticker (Monroney label) photo taken at a dealership. Extract the following and return ONLY a valid JSON object, no explanation, no markdown fences:
+{
+  "vin": "17-character VIN or null",
+  "year": "model year as 4-digit string",
+  "make": "manufacturer name e.g. Kia Toyota Ford",
+  "model": "model name e.g. Sorento Camry F-150",
+  "trim": "trim level e.g. EX LX Sport",
+  "engine": "engine description e.g. 2.5T 3.5L V6",
+  "drive": "drivetrain e.g. AWD FWD RWD 4WD",
+  "msrp": total MSRP as integer with no dollar sign or commas,
+  "dealer_name": "dealership name visible on sticker or null",
+  "dealer_city": "dealership city or null",
+  "dealer_state": "2-letter state abbreviation or null"
+}
+The dealer name is usually printed at the top or bottom of the sticker. Total MSRP is the largest dollar amount at the bottom of the price list. If a field is not visible use null. Return ONLY the JSON object.`,
         file_urls: [file_url],
-        model: 'claude-haiku-4-5',
-        response_json_schema: {
-          type: "object",
-          properties: {
-            vin: { type: "string" },
-            year: { type: "string" },
-            make: { type: "string" },
-            model: { type: "string" },
-            trim: { type: "string" },
-            engine: { type: "string" },
-            drive: { type: "string" },
-            msrp: { type: "number" },
-          }
-        }
+        model: 'claude-sonnet-4-5',
       });
-      let parsed;
+      // Strip markdown fences if present, then parse JSON
+      let parsed = null;
       try {
-        parsed = typeof result === 'string' ? JSON.parse(result) : result;
-      } catch {
-        parsed = {};
+        const raw = typeof result === 'string' ? result : JSON.stringify(result);
+        const match = raw.match(/\{[\s\S]*\}/);
+        parsed = match ? JSON.parse(match[0]) : JSON.parse(raw);
+      } catch (parseErr) {
+        console.error('Sticker JSON parse error:', parseErr, 'Raw:', result);
       }
       if (parsed?.make) {
         setVinData({ year: parsed.year, make: parsed.make, model: parsed.model, trim: parsed.trim, engine: parsed.engine, drive: parsed.drive });
-        if (parsed.vin) setVin(parsed.vin.toUpperCase());
+        if (parsed.vin) setVin(String(parsed.vin).toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/gi, ''));
         if (parsed.msrp) setAskingPrice(String(parsed.msrp));
+        // Auto-populate dealer name from sticker if not already entered
+        if (parsed.dealer_name && !dealerName) {
+          const cityState = [parsed.dealer_city, parsed.dealer_state].filter(Boolean).join(', ');
+          setDealerName(cityState ? `${parsed.dealer_name} — ${cityState}` : parsed.dealer_name);
+        }
+        setVinError('');
       } else {
-        setVinError('Could not read window sticker. Try a clearer photo.');
+        setVinError('Could not read window sticker. Try a clearer photo or enter VIN manually.');
       }
     } catch (err) {
       console.error('Sticker scan error:', err);
-      setVinError('Could not read window sticker. Try a clearer photo.');
+      setVinError('Could not read window sticker. Try a clearer photo or enter VIN manually.');
     }
     setScanning(null);
     e.target.value = '';
@@ -308,6 +320,7 @@ export default function SessionNew() {
               {(vinData.engine || vinData.drive) && (
                 <p className="text-xs text-muted-foreground">{[vinData.engine, vinData.drive].filter(Boolean).join(' · ')}</p>
               )}
+              <p className="text-xs text-emerald-600 font-medium mt-1">✓ Sticker scanned — dealer name and price filled below</p>
             </div>
           </CardContent>
         </Card>
