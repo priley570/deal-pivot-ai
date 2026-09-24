@@ -5,35 +5,90 @@ import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Car, TrendingDown, Clock, ChevronRight, Target } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Plus, Car, TrendingDown, Clock, ChevronRight, Target, Trash2, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+
+/**
+ * Build a human-readable title from session data.
+ * Priority: stored vehicle fields > stored title.
+ * Existing sessions that have year/make/model will show the
+ * real vehicle name even if their stored title is "New Negotiation".
+ */
+function getSessionTitle(session) {
+  const parts = [session.vehicle_year, session.vehicle_make, session.vehicle_model].filter(Boolean);
+  if (parts.length > 0) {
+    const vehicle = parts.join(' ');
+    return session.dealer_name ? `${vehicle} @ ${session.dealer_name}` : vehicle;
+  }
+  // Fall back to stored title, but replace bare "New Negotiation" with dealer if available
+  if (session.title === 'New Negotiation' && session.dealer_name) {
+    return `Negotiation @ ${session.dealer_name}`;
+  }
+  return session.title || 'New Negotiation';
+}
+
+/**
+ * Build a short subtitle line (trim + VIN hint).
+ */
+function getSessionSubtitle(session) {
+  const bits = [];
+  if (session.vehicle_trim) bits.push(session.vehicle_trim);
+  if (session.vin) bits.push(`VIN …${session.vin.slice(-6)}`);
+  return bits.join(' · ') || null;
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  const [deleteTarget, setDeleteTarget] = useState(null); // session object pending delete
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       if (!user) return;
-      
+
       const { data, error } = await supabase
         .from('negotiation_sessions')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(5);
-      
-      if (!error) {
-        setSessions(data || []);
-      }
+
+      if (!error) setSessions(data || []);
       setLoading(false);
     };
     load();
   }, [user]);
 
   const handleNewSession = () => navigate('/session/new');
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const { error } = await supabase
+      .from('negotiation_sessions')
+      .delete()
+      .eq('id', deleteTarget.id)
+      .eq('user_id', user.id);
+
+    if (!error) {
+      setSessions(prev => prev.filter(s => s.id !== deleteTarget.id));
+    }
+    setDeleting(false);
+    setDeleteTarget(null);
+  };
 
   const recentSessions = sessions.slice(0, 3);
   const totalSaved = sessions.reduce((acc, s) => acc + (s.amount_saved || 0), 0);
@@ -103,38 +158,67 @@ export default function Dashboard() {
             <h2 className="text-sm font-semibold text-foreground">Recent Sessions</h2>
             <Link to="/history" className="text-xs text-primary font-medium">View all</Link>
           </div>
+
           <div className="space-y-2">
-            {recentSessions.map(session => (
-              <Link key={session.id} to={`/session/${session.id}`}>
-                <Card className="border-border shadow-sm hover:shadow-md transition-shadow">
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center">
-                        <Car className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground leading-tight">{session.title}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatDistanceToNow(new Date(session.created_at), { addSuffix: true })}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {session.amount_saved > 0 && (
-                        <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                          <TrendingDown className="w-3 h-3" />
-                          <span className="text-xs font-semibold">${session.amount_saved.toLocaleString()}</span>
+            {recentSessions.map(session => {
+              const displayTitle = getSessionTitle(session);
+              const subtitle = getSessionSubtitle(session);
+              return (
+                <Card
+                  key={session.id}
+                  className="border-border shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <CardContent className="p-0">
+                    <div className="flex items-stretch">
+                      {/* Clickable main area — navigates to session */}
+                      <button
+                        onClick={() => navigate(`/session/${session.id}`)}
+                        className="flex items-center gap-3 flex-1 min-w-0 p-4 text-left"
+                      >
+                        <div className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center shrink-0">
+                          <Car className="w-4 h-4 text-muted-foreground" />
                         </div>
-                      )}
-                      <Badge variant={session.status === 'active' ? 'default' : 'secondary'} className="text-xs capitalize">
-                        {session.status}
-                      </Badge>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-foreground leading-tight truncate">
+                            {displayTitle}
+                          </p>
+                          {subtitle && (
+                            <p className="text-xs text-muted-foreground truncate mt-0.5">{subtitle}</p>
+                          )}
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {formatDistanceToNow(new Date(session.created_at), { addSuffix: true })}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {session.amount_saved > 0 && (
+                            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                              <TrendingDown className="w-3 h-3" />
+                              <span className="text-xs font-semibold">${session.amount_saved.toLocaleString()}</span>
+                            </div>
+                          )}
+                          <Badge
+                            variant={session.status === 'active' ? 'default' : 'secondary'}
+                            className="text-xs capitalize"
+                          >
+                            {session.status}
+                          </Badge>
+                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                        </div>
+                      </button>
+
+                      {/* Delete button — separate from the nav area */}
+                      <button
+                        onClick={() => setDeleteTarget(session)}
+                        className="flex items-center justify-center w-12 border-l border-border text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors rounded-r-xl"
+                        aria-label="Delete negotiation"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </CardContent>
                 </Card>
-              </Link>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -145,6 +229,34 @@ export default function Dashboard() {
           <p className="text-sm text-muted-foreground">No sessions yet. Start one when you're at the dealership.</p>
         </div>
       )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this negotiation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget && (
+                <>
+                  <span className="font-semibold text-foreground">{getSessionTitle(deleteTarget)}</span>
+                  {' '}and all of its chat history will be permanently deleted. This cannot be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

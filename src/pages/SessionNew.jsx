@@ -172,21 +172,29 @@ The dealer name is usually printed at the top or bottom of the sticker. Total MS
     if (!user) return;
     setCreating(true);
     const vehicle = vinData || {};
-    const title = vinData
-      ? `${vehicle.year} ${vehicle.make} ${vehicle.model}${dealerName ? ' at ' + dealerName : ''}`
-      : dealerName ? `Negotiation at ${dealerName}` : 'New Negotiation';
-
     const selectedPlan = gamePlans.find(p => p.id === selectedPlanId);
+
+    // Resolve vehicle fields — VIN decode wins; fall back to game plan data
+    const resolvedYear  = vehicle.year  || null;
+    const resolvedMake  = vehicle.make  || selectedPlan?.preferred_makes?.[0]  || null;
+    const resolvedModel = vehicle.model || selectedPlan?.preferred_models?.[0] || null;
+
+    // Build a meaningful title: prefer specific vehicle, fall back to dealer, then generic
+    const vehicleStr = [resolvedYear, resolvedMake, resolvedModel].filter(Boolean).join(' ');
+    const title = vehicleStr
+      ? `${vehicleStr}${dealerName ? ' at ' + dealerName : ''}`
+      : dealerName
+        ? `Negotiation at ${dealerName}`
+        : 'New Negotiation';
 
     const sessionData = {
       user_id: user.id,
       title,
       status: 'active',
       vin: vin || null,
-      // Use VIN-decoded vehicle data first, fall back to game plan make/model
-      vehicle_year: vehicle.year || null,
-      vehicle_make: vehicle.make || selectedPlan?.preferred_makes?.[0] || null,
-      vehicle_model: vehicle.model || selectedPlan?.preferred_models?.[0] || null,
+      vehicle_year: resolvedYear,
+      vehicle_make: resolvedMake,
+      vehicle_model: resolvedModel,
       vehicle_trim: vehicle.trim || null,
       vehicle_engine: vehicle.engine || null,
       vehicle_drivetrain: vehicle.drive || null,

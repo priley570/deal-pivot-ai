@@ -5,8 +5,21 @@ import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Car, TrendingDown, ChevronRight, Clock, Search } from 'lucide-react';
-import { formatDistanceToNow, format } from 'date-fns';
+import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
+
+/** Mirrors the same helper in Dashboard.jsx */
+function getSessionTitle(session) {
+  const parts = [session.vehicle_year, session.vehicle_make, session.vehicle_model].filter(Boolean);
+  if (parts.length > 0) {
+    const vehicle = parts.join(' ');
+    return session.dealer_name ? `${vehicle} @ ${session.dealer_name}` : vehicle;
+  }
+  if (session.title === 'New Negotiation' && session.dealer_name) {
+    return `Negotiation @ ${session.dealer_name}`;
+  }
+  return session.title || 'New Negotiation';
+}
 
 export default function History() {
   const { user } = useAuth();
@@ -33,11 +46,21 @@ export default function History() {
     load();
   }, [user]);
 
-  const filtered = sessions.filter(s =>
-    s.title?.toLowerCase().includes(search.toLowerCase()) ||
-    s.dealer_name?.toLowerCase().includes(search.toLowerCase()) ||
-    s.vehicle_make?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = sessions.filter(s => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    // Search across display title AND all raw vehicle/dealer fields
+    return (
+      getSessionTitle(s).toLowerCase().includes(q) ||
+      s.title?.toLowerCase().includes(q) ||
+      s.dealer_name?.toLowerCase().includes(q) ||
+      s.vehicle_year?.toLowerCase().includes(q) ||
+      s.vehicle_make?.toLowerCase().includes(q) ||
+      s.vehicle_model?.toLowerCase().includes(q) ||
+      s.vehicle_trim?.toLowerCase().includes(q) ||
+      s.vin?.toLowerCase().includes(q)
+    );
+  });
 
   const statusColors = {
     active: 'default',
@@ -86,8 +109,11 @@ export default function History() {
                       <Car className="w-4 h-4 text-muted-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate">{session.title}</p>
-                      {session.dealer_name && (
+                      <p className="text-sm font-semibold text-foreground truncate">{getSessionTitle(session)}</p>
+                      {session.vehicle_trim && (
+                        <p className="text-xs text-muted-foreground truncate">{session.vehicle_trim}{session.vin ? ` · VIN …${session.vin.slice(-6)}` : ''}</p>
+                      )}
+                      {!session.vehicle_trim && session.dealer_name && (
                         <p className="text-xs text-muted-foreground truncate">{session.dealer_name}</p>
                       )}
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
