@@ -14,6 +14,7 @@ import SessionDetail from '@/pages/SessionDetail';
 import SalespersonShow from '@/pages/SalespersonShow';
 import History from '@/pages/History';
 import Profile from '@/pages/Profile';
+import Tools from '@/pages/Tools';
 import GamePlan from '@/pages/GamePlan';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
@@ -52,6 +53,7 @@ const AuthenticatedApp = () => {
           <Route path="/game-plan" element={<GamePlan />} />
           <Route path="/salesperson-show" element={<SalespersonShow />} />
           <Route path="/history" element={<History />} />
+          <Route path="/tools" element={<Tools />} />
           <Route path="/profile" element={<Profile />} />
         </Route>
       </Route>
