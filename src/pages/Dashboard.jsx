@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
+import { canNegotiate, TIER_CONFIG } from '@/lib/subscription';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Car, TrendingDown, Clock, ChevronRight, Target, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Car, TrendingDown, Clock, ChevronRight, Target, Trash2, Loader2, Lock, Star } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 /**
@@ -54,6 +55,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null); // session object pending delete
   const [deleting, setDeleting] = useState(false);
+  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -72,7 +74,13 @@ export default function Dashboard() {
     load();
   }, [user]);
 
-  const handleNewSession = () => navigate('/session/new');
+  const handleNewSession = () => {
+    if (!canNegotiate(user?.subscription_tier)) {
+      setShowUpgradeDialog(true);
+    } else {
+      navigate('/session/new');
+    }
+  };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -139,8 +147,17 @@ export default function Dashboard() {
         onClick={handleNewSession}
         className="w-full h-14 text-base font-semibold rounded-2xl shadow-md shadow-primary/20 mb-6 gap-2"
       >
-        <Plus className="w-5 h-5" />
+        {canNegotiate(user?.subscription_tier) ? (
+          <Plus className="w-5 h-5" />
+        ) : (
+          <Lock className="w-5 h-5" />
+        )}
         Start New Negotiation
+        {!canNegotiate(user?.subscription_tier) && (
+          <span className="ml-auto text-[10px] font-normal bg-white/20 px-2 py-0.5 rounded-full">
+            Launchpad
+          </span>
+        )}
       </Button>
 
       {/* Quick Tips */}
@@ -229,6 +246,55 @@ export default function Dashboard() {
           <p className="text-sm text-muted-foreground">No sessions yet. Start one when you're at the dealership.</p>
         </div>
       )}
+
+      {/* Upgrade dialog — shown when Starter-tier user tries to start a negotiation */}
+      <AlertDialog open={showUpgradeDialog} onOpenChange={setShowUpgradeDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-primary" />
+              Negotiations require an upgrade
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4 pt-1">
+                <p className="text-sm text-muted-foreground">
+                  Your Starter plan includes Game Plan and research tools. To get live AI coaching at the dealership, upgrade to Launchpad or Showroom Pro.
+                </p>
+                <div className="space-y-2">
+                  {/* Launchpad */}
+                  <div className="flex items-center justify-between p-3 rounded-xl border-2 border-primary bg-blue-50">
+                    <div className="flex items-center gap-2">
+                      <Star className="w-4 h-4 text-primary" />
+                      <div>
+                        <p className="text-sm font-bold text-foreground">Launchpad</p>
+                        <p className="text-xs text-muted-foreground">30-day negotiation pass</p>
+                      </div>
+                    </div>
+                    <p className="text-sm font-bold text-primary">$49.99</p>
+                  </div>
+                  {/* Showroom Pro */}
+                  <div className="flex items-center justify-between p-3 rounded-xl border border-border">
+                    <div className="flex items-center gap-2">
+                      <Star className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">Showroom Pro</p>
+                        <p className="text-xs text-muted-foreground">Annual pass · Best value</p>
+                      </div>
+                    </div>
+                    <p className="text-sm font-semibold text-foreground">$119.99 / yr</p>
+                  </div>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Maybe later</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setShowUpgradeDialog(false); navigate('/profile'); }}>
+              View Plans
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete confirmation dialog */}
       <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>

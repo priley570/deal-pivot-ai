@@ -8,14 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { User, LogOut, Zap, Star, Building2, Crown, ChevronRight, Save } from 'lucide-react';
-
-const TIERS = {
-  free: { label: 'Free', color: 'secondary', icon: Zap, description: 'Limited sessions' },
-  launchpad: { label: 'Launchpad', color: 'default', icon: Star, description: '30-Day Active Pass · $49.99' },
-  showroom_pro: { label: 'Showroom Pro', color: 'default', icon: Crown, description: 'Annual Pass · $119.99/yr' },
-  enterprise: { label: 'Enterprise', color: 'default', icon: Building2, description: 'B2B API Integration' },
-};
+import { User, LogOut, ChevronRight, Save, CheckCircle2 } from 'lucide-react';
+import { TIER_CONFIG, getTierConfig } from '@/lib/subscription';
 
 export default function Profile() {
   const { user, logout, updateProfile } = useAuth();
@@ -51,8 +45,8 @@ export default function Profile() {
     load();
   }, [user]);
 
-  const tier = TIERS[user?.subscription_tier || 'free'];
-  const TierIcon = tier?.icon || Zap;
+  const tier = getTierConfig(user?.subscription_tier);
+  const TierIcon = tier?.icon;
 
   const handleLogout = async () => {
     await logout(true);
@@ -83,7 +77,8 @@ export default function Profile() {
             <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
             <div className="flex items-center gap-1.5 mt-1.5">
               <TierIcon className="w-3 h-3 text-primary" />
-              <Badge variant={tier?.color} className="text-[10px]">{tier?.label}</Badge>
+              <Badge variant={tier?.badge} className="text-[10px]">{tier?.label}</Badge>
+              <span className="text-[10px] text-muted-foreground">{tier?.price}</span>
             </div>
           </div>
         </CardContent>
@@ -148,20 +143,36 @@ export default function Profile() {
           <CardTitle className="text-sm font-semibold">Subscription</CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4 space-y-3">
-          {Object.entries(TIERS).map(([key, t]) => {
+          {Object.entries(TIER_CONFIG).map(([key, t]) => {
             const TIcon = t.icon;
             const isCurrent = (user?.subscription_tier || 'free') === key;
             return (
-              <div key={key} className={`flex items-center justify-between p-3 rounded-xl border ${isCurrent ? 'border-primary bg-blue-50' : 'border-border'}`}>
+              <div
+                key={key}
+                className={`flex items-center justify-between p-3 rounded-xl border-2 ${
+                  isCurrent ? 'border-primary bg-blue-50' : 'border-border'
+                }`}
+              >
                 <div className="flex items-center gap-3">
                   <TIcon className={`w-4 h-4 ${isCurrent ? 'text-primary' : 'text-muted-foreground'}`} />
                   <div>
-                    <p className={`text-sm font-semibold ${isCurrent ? 'text-primary' : 'text-foreground'}`}>{t.label}</p>
+                    <div className="flex items-center gap-2">
+                      <p className={`text-sm font-semibold ${isCurrent ? 'text-primary' : 'text-foreground'}`}>
+                        {t.label}
+                      </p>
+                      <span className="text-xs font-bold text-muted-foreground">{t.price}</span>
+                    </div>
                     <p className="text-[10px] text-muted-foreground">{t.description}</p>
+                    {!t.canNegotiate && (
+                      <p className="text-[10px] text-amber-600 font-medium mt-0.5">Game Plan &amp; research only · No live negotiations</p>
+                    )}
                   </div>
                 </div>
                 {isCurrent ? (
-                  <Badge variant="default" className="text-[10px]">Active</Badge>
+                  <div className="flex items-center gap-1 text-primary">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span className="text-[10px] font-semibold">Active</span>
+                  </div>
                 ) : (
                   <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 )}

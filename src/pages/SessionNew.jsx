@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { canNegotiate } from '@/lib/subscription';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -7,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Search, Loader2, Car, FileImage, ScanLine, Target } from 'lucide-react';
+import { ArrowLeft, Search, Loader2, Car, FileImage, ScanLine, Target, Lock, Star } from 'lucide-react';
 
 export default function SessionNew() {
   const navigate = useNavigate();
@@ -220,6 +221,53 @@ The dealer name is usually printed at the top or bottom of the sticker. Total MS
 
     navigate(`/session/${session.id}`);
   };
+
+  // Hard gate: if user somehow navigates here directly without negotiate access, show upgrade wall
+  if (!canNegotiate(user?.subscription_tier)) {
+    return (
+      <div className="px-4 pt-6 pb-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+          <Lock className="w-7 h-7 text-primary" />
+        </div>
+        <h2 className="text-xl font-bold text-foreground mb-2">Upgrade to Negotiate</h2>
+        <p className="text-sm text-muted-foreground mb-6 max-w-xs">
+          Live AI negotiation coaching is available on Launchpad ($49.99 / 30 days) and Showroom Pro ($119.99 / yr).
+          Your Starter plan includes Game Plan and research tools.
+        </p>
+        <div className="w-full max-w-xs space-y-3 mb-6">
+          <div className="flex items-center justify-between p-3 rounded-xl border-2 border-primary bg-blue-50">
+            <div className="flex items-center gap-2">
+              <Star className="w-4 h-4 text-primary" />
+              <div className="text-left">
+                <p className="text-sm font-bold text-foreground">Launchpad</p>
+                <p className="text-xs text-muted-foreground">30-day negotiation pass</p>
+              </div>
+            </div>
+            <p className="text-sm font-bold text-primary">$49.99</p>
+          </div>
+          <div className="flex items-center justify-between p-3 rounded-xl border border-border">
+            <div className="flex items-center gap-2">
+              <Star className="w-4 h-4 text-muted-foreground" />
+              <div className="text-left">
+                <p className="text-sm font-semibold text-foreground">Showroom Pro</p>
+                <p className="text-xs text-muted-foreground">Annual pass · Best value</p>
+              </div>
+            </div>
+            <p className="text-sm font-semibold text-foreground">$119.99 / yr</p>
+          </div>
+        </div>
+        <button
+          onClick={() => navigate('/profile')}
+          className="w-full max-w-xs h-12 rounded-xl bg-primary text-primary-foreground font-semibold text-sm"
+        >
+          View Plans
+        </button>
+        <button onClick={() => navigate(-1)} className="mt-3 text-sm text-muted-foreground">
+          Go back
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 pt-6 pb-6">
