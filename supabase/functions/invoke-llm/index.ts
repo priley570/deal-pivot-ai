@@ -9,6 +9,55 @@ const corsHeaders = {
 // Supported Anthropic image media types
 const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 
+// ─── Dealer Intel RAG ────────────────────────────────────────────────────────
+// If OPENAI_API_KEY is configured, invoke the dealer-intel-rag function before
+// the chat completion call to ground the response in approved tactic cards.
+// Fails safe: if retrieval fails or is unconfigured, the chat call proceeds
+// with an empty intel block that instructs the model not to claim grounding.
+
+async function fetchDealerIntel(
+  prompt: string,
+  turnRef: string,
+  userId: string | null
+): Promise<string> {
+  const openaiKey = Deno.env.get('OPENAI_API_KEY')
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+
+  // RAG is optional — skip quietly if not configured
+  if (!openaiKey || !supabaseUrl || !serviceKey) {
+    return '\nDEALER INTEL\nDealer Intel retrieval is not configured for this environment.\nEND DEALER INTEL\n'
+  }
+
+  try {
+    const ragUrl = `${supabaseUrl}/functions/v1/dealer-intel-rag`
+    const ragRes = await fetch(ragUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serviceKey}`,
+        apikey: serviceKey,
+      },
+      body: JSON.stringify({
+        turn_ref: turnRef,
+        input_kind: 'text',
+        input_text: prompt,
+        user_id: userId,
+      }),
+    })
+    if (!ragRes.ok) {
+      console.warn(`dealer-intel-rag returned ${ragRes.status}`)
+      return '\nDEALER INTEL\nDealer Intel retrieval was unavailable for this turn.\nEND DEALER INTEL\n'
+    }
+    const ragData = await ragRes.json()
+    return ragData?.system_prompt_block ?? '\nDEALER INTEL\nNo block returned.\nEND DEALER INTEL\n'
+  } catch (err) {
+    console.warn('dealer-intel-rag fetch failed:', (err as Error).name)
+    return '\nDEALER INTEL\nDealer Intel retrieval was unavailable for this turn.\nEND DEALER INTEL\n'
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -24,7 +73,7 @@ serve(async (req) => {
       )
     }
 
-    const { prompt, file_urls, model, response_json_schema } = await req.json()
+    const { prompt, file_urls, model, response_json_schema, user_id, turn_ref } = await req.json()
 
     if (!prompt) {
       return new Response(
@@ -47,6 +96,19 @@ serve(async (req) => {
 
     // Default to Haiku — fastest and cheapest
     const anthropicModel = modelMap[model] || 'claude-haiku-4-5'
+
+    // ── RAG retrieval (runs before the chat call) ──────────────────────────
+    // Only run RAG on chat turns (not JSON-schema extraction requests)
+    let intelSystemBlock = ''
+    if (!response_json_schema) {
+      const resolvedTurnRef = turn_ref || `turn-${crypto.randomUUID()}`
+      intelSystemBlock = await fetchDealerIntel(
+        prompt,
+        resolvedTurnRef,
+        user_id ?? null
+      )
+    }
+    // ──────────────────────────────────────────────────────────────────────
 
     // Build content array — images first, then text (best practice for vision)
     type ContentBlock =
@@ -117,9 +179,12 @@ serve(async (req) => {
       messages
     }
 
-    // Add JSON schema or system prompt
+    // Build system prompt: JSON schema mode OR base coaching + RAG intel
     if (response_json_schema) {
       anthropicRequest.system = `Respond with valid JSON that matches this schema: ${JSON.stringify(response_json_schema)}`
+    } else if (intelSystemBlock) {
+      // Prepend the RAG intel block so the model sees grounding before the user message
+      anthropicRequest.system = intelSystemBlock
     }
 
     // Call Anthropic API
