@@ -34,6 +34,34 @@ When you output the JSON, include a market_price_min and market_price_max field 
 
 After gathering enough info, produce a structured JSON summary. Be conversational and brief. Ask one or two questions at a time. When you have enough info to proceed, say "I have everything I need to build your game plan!" and then output a JSON block wrapped in <PLAN_DATA>...</PLAN_DATA> tags with these fields: condition, budget_min, budget_max, market_price_min, market_price_max, preferred_makes (array), preferred_models (array), open_to_alternatives, body_style, must_have_features (array), zip_code, down_payment, trade_in_value, credit_score_range (one of: excellent_750_plus, good_700_749, fair_650_699, building_below_650), loan_term_months, budget_mismatch (boolean, true if market price exceeds budget by more than 20%), ai_recommendations (a 2-3 sentence plain-English summary of the market situation, any budget concerns, and negotiation tips for this specific vehicle).`;
 
+// Renders **bold** and newlines from AI text without any library
+function renderMarkdown(text) {
+  if (!text) return null;
+  return (
+    <span>
+      {text.split('\n').map((line, lineIdx, arr) => {
+        const parts = [];
+        let last = 0;
+        const pattern = /\*\*([^*]+)\*\*/g;
+        let match;
+        let key = 0;
+        while ((match = pattern.exec(line)) !== null) {
+          if (match.index > last) parts.push(line.slice(last, match.index));
+          parts.push(<strong key={key++} className="font-semibold">{match[1]}</strong>);
+          last = match.index + match[0].length;
+        }
+        if (last < line.length) parts.push(line.slice(last));
+        return (
+          <span key={lineIdx}>
+            {parts}
+            {lineIdx < arr.length - 1 && <br />}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 export default function GamePlanWizard({ plan, onClose }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
@@ -247,7 +275,7 @@ export default function GamePlanWizard({ plan, onClose }) {
                 ? 'bg-primary text-white rounded-tr-sm'
                 : 'bg-white border border-border rounded-tl-sm text-foreground'
             }`}>
-              {m.content}
+              {m.role === 'assistant' ? renderMarkdown(m.content) : m.content}
             </div>
             {m.role === 'user' && (
               <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center shrink-0 mt-0.5">
