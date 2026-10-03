@@ -185,31 +185,43 @@ export default function GamePlanWizard({ plan, onClose }) {
         const fullPlan = { ...planData, ...dbPlan };
         setExtractedPlan(fullPlan);
 
-        // Save to DB — capture errors explicitly
-        if (savedPlan) {
-          const { data: updated, error: updateError } = await supabase
-            .from('game_plans')
-            .update(dbPlan)
-            .eq('id', savedPlan.id)
-            .eq('user_id', user.id)
-            .select()
-            .single();
-          if (updateError) {
-            console.error('Game plan update failed:', updateError);
+        // Save to DB — show user if it fails, but always advance to summary
+        try {
+          if (savedPlan) {
+            const { data: updated, error: updateError } = await supabase
+              .from('game_plans')
+              .update(dbPlan)
+              .eq('id', savedPlan.id)
+              .eq('user_id', user.id)
+              .select()
+              .single();
+            if (updateError) {
+              console.error('Game plan update failed:', updateError);
+              setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: '⚠️ Your plan is ready but I had trouble saving it. You can still view it and find dealers — just note it may not appear in your saved plans list.',
+              }]);
+            } else {
+              setSavedPlan(updated);
+            }
           } else {
-            setSavedPlan(updated);
+            const { data: created, error: insertError } = await supabase
+              .from('game_plans')
+              .insert({ ...dbPlan, user_id: user.id })
+              .select()
+              .single();
+            if (insertError) {
+              console.error('Game plan insert failed:', insertError);
+              setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: '⚠️ Your plan is ready but I had trouble saving it. You can still view it and find dealers — just note it may not appear in your saved plans list.',
+              }]);
+            } else {
+              setSavedPlan(created);
+            }
           }
-        } else {
-          const { data: created, error: insertError } = await supabase
-            .from('game_plans')
-            .insert({ ...dbPlan, user_id: user.id })
-            .select()
-            .single();
-          if (insertError) {
-            console.error('Game plan insert failed:', insertError);
-          } else {
-            setSavedPlan(created);
-          }
+        } catch (saveErr) {
+          console.error('Game plan save exception:', saveErr);
         }
         setView('summary');
       }
@@ -233,7 +245,7 @@ export default function GamePlanWizard({ plan, onClose }) {
     );
   }
 
-  if (view === 'dealers' && savedPlan) {
+  if (view === 'dealers' && extractedPlan) {
     return (
       <DealerList
         plan={extractedPlan}
