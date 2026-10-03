@@ -1,12 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Send, BarChart2, Loader2, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Send, BarChart2, Loader2, ChevronDown, Mic, MicOff } from 'lucide-react';
 import ChatBubble from '@/components/session/ChatBubble';
-import VoiceInput from '@/components/session/VoiceInput';
 import DocumentScanner from '@/components/session/DocumentScanner';
 import MarketComparison from '@/components/session/MarketComparison';
 
@@ -38,6 +37,36 @@ export default function SessionDetail() {
   const [showMarket, setShowMarket] = useState(true);
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const [isListening, setIsListening] = useState(false);
+
+  const startListening = useCallback(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Voice input is not supported in this browser. Please use Chrome or Edge.');
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    recognition.onstart = () => setIsListening(true);
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map(r => r[0].transcript)
+        .join('');
+      setTextInput(transcript);
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, []);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+  }, []);
 
   const invokeLLM = async (params) => {
     const { data, error } = await supabase.functions.invoke('invoke-llm', {
@@ -251,26 +280,33 @@ Respond as DealPivot AI:`,
       {/* Input */}
       <div className="px-4 py-3 border-t border-border bg-white shrink-0">
         <div className="flex items-center gap-2">
-          <VoiceInput onTranscript={(t) => sendMessage(t, 'voice')} disabled={aiLoading} />
-          <div className="flex-1 flex gap-2">
-            <Input
-              ref={inputRef}
-              value={textInput}
-              onChange={e => setTextInput(e.target.value)}
-              placeholder="Ask about this deal..."
-              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage(textInput)}
-              disabled={aiLoading}
-              className="rounded-full text-sm"
-            />
-            <Button
-              onClick={() => sendMessage(textInput)}
-              disabled={!textInput.trim() || aiLoading}
-              size="icon"
-              className="rounded-full shrink-0 w-10 h-10"
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </div>
+          <Button
+            onClick={isListening ? stopListening : startListening}
+            disabled={aiLoading}
+            size="icon"
+            variant={isListening ? 'destructive' : 'outline'}
+            className="rounded-full shrink-0 w-10 h-10"
+            title={isListening ? 'Stop listening' : 'Speak your message'}
+          >
+            {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          </Button>
+          <Input
+            ref={inputRef}
+            value={textInput}
+            onChange={e => setTextInput(e.target.value)}
+            placeholder={isListening ? 'Listening...' : 'Ask about this deal...'}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage(textInput)}
+            disabled={aiLoading}
+            className={`rounded-full text-sm ${isListening ? 'border-red-400 ring-1 ring-red-300' : ''}`}
+          />
+          <Button
+            onClick={() => sendMessage(textInput)}
+            disabled={!textInput.trim() || aiLoading}
+            size="icon"
+            className="rounded-full shrink-0 w-10 h-10"
+          >
+            <Send className="w-4 h-4" />
+          </Button>
         </div>
       </div>
     </div>
