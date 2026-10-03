@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, Send, Bot, User } from 'lucide-react';
+import { ArrowLeft, Loader2, Send, Bot, User, Mic, MicOff } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import PlanSummary from './PlanSummary';
 import DealerList from './DealerList';
@@ -71,6 +71,36 @@ export default function GamePlanWizard({ plan, onClose }) {
   const [savedPlan, setSavedPlan] = useState(plan || null);
   const [view, setView] = useState(plan ? 'summary' : 'chat'); // 'chat' | 'summary' | 'dealers'
   const bottomRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const [isListening, setIsListening] = useState(false);
+
+  const startListening = useCallback(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Voice input is not supported in this browser. Please use Chrome or Edge.');
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    recognition.onstart = () => setIsListening(true);
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map(r => r[0].transcript)
+        .join('');
+      setInput(transcript);
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, []);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+  }, []);
 
   const invokeLLM = async (params) => {
     const { data, error } = await supabase.functions.invoke('invoke-llm', {
@@ -311,13 +341,23 @@ export default function GamePlanWizard({ plan, onClose }) {
 
       {/* Input */}
       <div className="fixed bottom-[60px] left-1/2 -translate-x-1/2 w-full max-w-md px-4 pb-4 pt-2 bg-background border-t border-border">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <Button
+            onClick={isListening ? stopListening : startListening}
+            disabled={loading}
+            size="icon"
+            variant={isListening ? 'destructive' : 'outline'}
+            className="rounded-xl shrink-0"
+            title={isListening ? 'Stop listening' : 'Speak your answer'}
+          >
+            {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          </Button>
           <Input
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && sendMessage()}
-            placeholder="Type your answer..."
-            className="rounded-xl"
+            placeholder={isListening ? 'Listening...' : 'Type or speak your answer...'}
+            className={`rounded-xl ${isListening ? 'border-red-400 ring-1 ring-red-300' : ''}`}
             disabled={loading}
           />
           <Button onClick={sendMessage} disabled={loading || !input.trim()} size="icon" className="rounded-xl shrink-0">
